@@ -1,0 +1,326 @@
+import tkinter as tk
+from tkinter import ttk, messagebox
+from datetime import datetime
+import hashlib
+import sqlite3
+
+class ExpenseTrackerApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Expense Tracker")
+        self.root.configure(bg="#f0f0f0")
+
+        # Connect to the SQLite database
+        self.conn = sqlite3.connect('expense_tracker.db')
+        self.cursor = self.conn.cursor()
+
+        # Create tables if they don't exist
+        self.create_tables()
+
+        self.current_user = None
+
+        # Set up the UI components
+        self.setup_login_ui()
+
+    def create_tables(self):
+        self.cursor.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            username TEXT PRIMARY KEY,
+            password TEXT NOT NULL
+        )
+        ''')
+
+        self.cursor.execute('''
+        CREATE TABLE IF NOT EXISTS expenses (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL,
+            name TEXT NOT NULL,
+            amount REAL NOT NULL,
+            date_added TEXT NOT NULL,
+            FOREIGN KEY (username) REFERENCES users(username)
+        )
+        ''')
+
+        self.cursor.execute('''
+        CREATE TABLE IF NOT EXISTS savings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL,
+            amount REAL NOT NULL,
+            date_added TEXT NOT NULL,
+            FOREIGN KEY (username) REFERENCES users(username)
+        )
+        ''')
+
+        self.conn.commit()
+
+    def setup_login_ui(self):
+        self.clear_ui()
+
+        login_frame = tk.Frame(self.root, padx=20, pady=20, bg="#f0f0f0")
+        login_frame.pack(expand=True, fill=tk.BOTH)
+
+        title_label = tk.Label(login_frame, text="Expense Tracker Login", font=("Helvetica", 16, "bold"), bg="#f0f0f0", fg="#333333")
+        title_label.grid(row=0, column=0, columnspan=2, pady=10)
+
+        tk.Label(login_frame, text="Username:", bg="#f0f0f0", fg="#333333").grid(row=1, column=0, padx=10, pady=10)
+        self.username_entry = tk.Entry(login_frame, bg="#ffffff", fg="#333333", font=("Helvetica", 10))
+        self.username_entry.grid(row=1, column=1, padx=10, pady=10)
+
+        tk.Label(login_frame, text="Password:", bg="#f0f0f0", fg="#333333").grid(row=2, column=0, padx=10, pady=10)
+        self.password_entry = tk.Entry(login_frame, show="*", bg="#ffffff", fg="#333333", font=("Helvetica", 10))
+        self.password_entry.grid(row=2, column=1, padx=10, pady=10)
+
+        self.login_button = tk.Button(login_frame, text="Login", command=self.login, bg="#5cb85c", fg="#ffffff", font=("Helvetica", 10, "bold"))
+        self.login_button.grid(row=3, column=0, columnspan=2, padx=10, pady=10)
+
+        self.register_button = tk.Button(login_frame, text="Register", command=self.setup_register_ui, bg="#5bc0de", fg="#ffffff", font=("Helvetica", 10, "bold"))
+        self.register_button.grid(row=4, column=0, columnspan=2, padx=10, pady=10)
+
+    def setup_register_ui(self):
+        self.clear_ui()
+
+        register_frame = tk.Frame(self.root, padx=20, pady=20, bg="#f0f0f0")
+        register_frame.pack(expand=True, fill=tk.BOTH)
+
+        title_label = tk.Label(register_frame, text="Register for Expense Tracker", font=("Helvetica", 16, "bold"), bg="#f0f0f0", fg="#333333")
+        title_label.grid(row=0, column=0, columnspan=2, pady=10)
+
+        tk.Label(register_frame, text="Username:", bg="#f0f0f0", fg="#333333").grid(row=1, column=0, padx=10, pady=10)
+        self.new_username_entry = tk.Entry(register_frame, bg="#ffffff", fg="#333333", font=("Helvetica", 10))
+        self.new_username_entry.grid(row=1, column=1, padx=10, pady=10)
+
+        tk.Label(register_frame, text="Password:", bg="#f0f0f0", fg="#333333").grid(row=2, column=0, padx=10, pady=10)
+        self.new_password_entry = tk.Entry(register_frame, show="*", bg="#ffffff", fg="#333333", font=("Helvetica", 10))
+        self.new_password_entry.grid(row=2, column=1, padx=10, pady=10)
+
+        self.register_submit_button = tk.Button(register_frame, text="Register", command=self.register, bg="#5cb85c", fg="#ffffff", font=("Helvetica", 10, "bold"))
+        self.register_submit_button.grid(row=3, column=0, columnspan=2, padx=10, pady=10)
+
+        self.back_to_login_button = tk.Button(register_frame, text="Back to Login", command=self.setup_login_ui, bg="#f0ad4e", fg="#ffffff", font=("Helvetica", 10, "bold"))
+        self.back_to_login_button.grid(row=4, column=0, columnspan=2, padx=10, pady=10)
+
+    def clear_ui(self):
+        for widget in self.root.winfo_children():
+            widget.destroy()
+
+    def login(self):
+        username = self.username_entry.get()
+        password = self.password_entry.get()
+        hashed_password = hashlib.sha256(password.encode()).hexdigest()
+
+        self.cursor.execute('SELECT * FROM users WHERE username = ? AND password = ?', (username, hashed_password))
+        user = self.cursor.fetchone()
+
+        if user:
+            self.current_user = username
+            self.setup_expense_tracker_ui()
+        else:
+            messagebox.showerror("Login Failed", "Invalid username or password.")
+
+    def register(self):
+        username = self.new_username_entry.get()
+        password = self.new_password_entry.get()
+
+        if not username.isalpha():
+            messagebox.showerror("Registration Failed", "Username must contain only letters.")
+            return
+
+        if len(password) < 8 or not password.isdigit():
+            messagebox.showerror("Registration Failed", "Password must be at least 8 characters long and contain only numbers.")
+            return
+
+        hashed_password = hashlib.sha256(password.encode()).hexdigest()
+
+        try:
+            self.cursor.execute('INSERT INTO users (username, password) VALUES (?, ?)', (username, hashed_password))
+            self.conn.commit()
+            messagebox.showinfo("Registration Successful", "You have successfully registered!")
+            self.setup_login_ui()
+        except sqlite3.IntegrityError:
+            messagebox.showerror("Registration Failed", "Username already exists.")
+
+    def setup_expense_tracker_ui(self):
+        self.clear_ui()
+
+        main_frame = tk.Frame(self.root, padx=20, pady=20, bg="#f0f0f0")
+        main_frame.pack(expand=True, fill=tk.BOTH)
+
+        title_label = tk.Label(main_frame, text="Expense Tracker", font=("Helvetica", 16, "bold"), bg="#f0f0f0", fg="#333333")
+        title_label.grid(row=0, column=0, columnspan=4, pady=10)
+
+        expenses_frame = tk.LabelFrame(main_frame, text="Expenses", padx=10, pady=10, bg="#ffffff", fg="#333333", font=("Helvetica", 12, "bold"))
+        expenses_frame.grid(row=1, column=0, padx=10, pady=10, sticky="nsew")
+
+        self.expense_listbox = tk.Listbox(expenses_frame, width=50, height=10, bg="#e6e6e6", fg="#333333", font=("Helvetica", 10))
+        self.expense_listbox.pack(pady=5)
+
+        self.total_expenses_label = tk.Label(expenses_frame, text="Total Expenses: Php0.00", font=("Helvetica", 10, "bold"), bg="#ffffff", fg="#d9534f")
+        self.total_expenses_label.pack(pady=5)
+
+        expense_entry_frame = tk.Frame(expenses_frame, bg="#ffffff")
+        expense_entry_frame.pack(pady=5)
+
+        tk.Label(expense_entry_frame, text="Expense Name:", bg="#ffffff", fg="#333333").grid(row=0, column=0, padx=5, pady=5)
+        self.expense_name_entry = tk.Entry(expense_entry_frame, width=20, bg="#ffffff", fg="#333333", font=("Helvetica", 10))
+        self.expense_name_entry.grid(row=0, column=1, padx=5, pady=5)
+
+        tk.Label(expense_entry_frame, text="Expense Amount:", bg="#ffffff", fg="#333333").grid(row=0, column=2, padx=5, pady=5)
+        self.expense_entry = tk.Entry(expense_entry_frame, width=20, bg="#ffffff", fg="#333333", font=("Helvetica", 10))
+        self.expense_entry.grid(row=0, column=3, padx=5, pady=5)
+
+        self.add_expense_button = tk.Button(expense_entry_frame, text="Add Expense", command=self.add_expense, bg="#5cb85c", fg="#ffffff", font=("Helvetica", 10, "bold"))
+        self.add_expense_button.grid(row=0, column=4, padx=5, pady=5)
+
+        self.remove_expense_button = tk.Button(expenses_frame, text="Remove Selected Expense", command=self.remove_expense, bg="#d9534f", fg="#ffffff", font=("Helvetica", 10, "bold"))
+        self.remove_expense_button.pack(pady=5)
+
+        savings_frame = tk.LabelFrame(main_frame, text="Savings", padx=10, pady=10, bg="#ffffff", fg="#333333", font=("Helvetica", 12, "bold"))
+        savings_frame.grid(row=1, column=1, padx=10, pady=10, sticky="nsew")
+
+        self.savings_listbox = tk.Listbox(savings_frame, width=50, height=10, bg="#e6e6e6", fg="#333333", font=("Helvetica", 10))
+        self.savings_listbox.pack(pady=5)
+
+        self.total_savings_label = tk.Label(savings_frame, text="Total Savings: Php0.00", font=("Helvetica", 10, "bold"), bg="#ffffff", fg="#5cb85c")
+        self.total_savings_label.pack(pady=5)
+
+        saving_entry_frame = tk.Frame(savings_frame, bg="#ffffff")
+        saving_entry_frame.pack(pady=5)
+
+        tk.Label(saving_entry_frame, text="Add Saving:", bg="#ffffff", fg="#333333").grid(row=0, column=0, padx=5, pady=5)
+        self.saving_entry = tk.Entry(saving_entry_frame, width=30, bg="#ffffff", fg="#333333", font=("Helvetica", 10))
+        self.saving_entry.grid(row=0, column=1, padx=5, pady=5)
+        self.add_saving_button = tk.Button(saving_entry_frame, text="Add Saving", command=self.add_saving, bg="#5bc0de", fg="#ffffff", font=("Helvetica", 10, "bold"))
+        self.add_saving_button.grid(row=0, column=2, padx=5, pady=5)
+
+        goal_frame = tk.LabelFrame(main_frame, text="Goal Savings", padx=10, pady=10, bg="#ffffff", fg="#333333", font=("Helvetica", 12, "bold"))
+        goal_frame.grid(row=2, column=0, columnspan=2, padx=10, pady=10, sticky="nsew")
+
+        goal_entry_frame = tk.Frame(goal_frame, bg="#ffffff")
+        goal_entry_frame.pack(pady=5)
+
+        tk.Label(goal_entry_frame, text="Set Goal Savings:", bg="#ffffff", fg="#333333").grid(row=0, column=0, padx=5, pady=5)
+        self.goal_entry = tk.Entry(goal_entry_frame, width=30, bg="#ffffff", fg="#333333", font=("Helvetica", 10))
+        self.goal_entry.grid(row=0, column=1, padx=5, pady=5)
+        self.set_goal_button = tk.Button(goal_entry_frame, text="Set Goal", command=self.set_goal, bg="#f0ad4e", fg="#ffffff", font=("Helvetica", 10, "bold"))
+        self.set_goal_button.grid(row=0, column=2, padx=5, pady=5)
+
+        self.progress_label = tk.Label(goal_frame, text="Savings Progress: Php0.00/Php0.00", bg="#ffffff", fg="#333333", font=("Helvetica", 10))
+        self.progress_label.pack(pady=5)
+        self.progress_bar = ttk.Progressbar(goal_frame, length=200)
+        self.progress_bar.pack(pady=5)
+
+        self.net_worth_label = tk.Label(main_frame, text="Net Worth: Php0.00", font=("Helvetica", 12, "bold"), bg="#f0f0f0", fg="#333333")
+        self.net_worth_label.grid(row=3, column=0, columnspan=2, pady=10)
+
+        self.load_data()
+
+    def load_data(self):
+        self.cursor.execute('SELECT name, amount, date_added FROM expenses WHERE username = ?', (self.current_user,))
+        expenses = self.cursor.fetchall()
+        self.expenses = [(name, amount, date_added) for name, amount, date_added in expenses]
+        for name, amount, date_added in self.expenses:
+            self.expense_listbox.insert(tk.END, f"{name}: Php{amount:.2f} on {date_added}")
+
+        self.cursor.execute('SELECT amount, date_added FROM savings WHERE username = ?', (self.current_user,))
+        savings = self.cursor.fetchall()
+        self.savings = [(amount, date_added) for amount, date_added in savings]
+        for amount, date_added in self.savings:
+            self.savings_listbox.insert(tk.END, f"Php{amount:.2f} on {date_added}")
+
+        self.update_total_expenses()
+        self.update_total_savings()
+
+    def add_expense(self):
+        expense_name = self.expense_name_entry.get()
+        expense = self.expense_entry.get()
+        date_added = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        if expense_name and expense:
+            try:
+                expense = float(expense)
+                self.cursor.execute('INSERT INTO expenses (username, name, amount, date_added) VALUES (?, ?, ?, ?)',
+                                    (self.current_user, expense_name, expense, date_added))
+                self.conn.commit()
+
+                self.expenses.append((expense_name, expense, date_added))
+                self.expense_listbox.insert(tk.END, f"{expense_name}: Php{expense:.2f} on {date_added}")
+                self.expense_name_entry.delete(0, tk.END)
+                self.expense_entry.delete(0, tk.END)
+                self.update_total_expenses()
+            except ValueError:
+                messagebox.showerror("Invalid Input", "Please enter a valid number for the expense.")
+
+    def remove_expense(self):
+        selected_expense_index = self.expense_listbox.curselection()
+        if selected_expense_index:
+            expense = self.expense_listbox.get(selected_expense_index)
+            expense_name, expense_value = expense.split(": Php")
+            expense_value = float(expense_value.split(" on ")[0])
+            date_added = expense.split(" on ")[1]
+            self.expenses.remove((expense_name, expense_value, date_added))
+            self.expense_listbox.delete(selected_expense_index)
+            self.update_total_expenses()
+
+            self.cursor.execute('DELETE FROM expenses WHERE username = ? AND name = ? AND amount = ? AND date_added = ?',
+                                (self.current_user, expense_name, expense_value, date_added))
+            self.conn.commit()
+
+            self.expenses.remove((expense_name, expense_value, date_added))
+            self.expense_listbox.delete(selected_expense_index)
+            self.update_total_expenses()
+
+    def update_total_expenses(self):
+        total_expenses = sum(expense[1] for expense in self.expenses)
+        self.total_expenses_label.config(text=f"Total Expenses: Php{total_expenses:.2f}")
+        self.update_net_worth()
+        self.update_progress()
+
+    def add_saving(self):
+        saving = self.saving_entry.get()
+        date_added = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        if saving:
+            try:
+                saving = float(saving)
+                self.cursor.execute('INSERT INTO savings (username, amount, date_added) VALUES (?, ?, ?)',
+                                    (self.current_user, saving, date_added))
+                self.conn.commit()
+
+                self.savings.append((saving, date_added))
+                self.savings_listbox.insert(tk.END, f"Php{saving:.2f} on {date_added}")
+                self.saving_entry.delete(0, tk.END)
+                self.update_total_savings()
+            except ValueError:
+                messagebox.showerror("Invalid Input", "Please enter a valid number for the savings.")
+
+    def update_total_savings(self):
+        total_savings = sum(saving[0] for saving in self.savings)
+        self.total_savings_label.config(text=f"Total Savings: Php{total_savings:.2f}")
+        self.update_net_worth()
+        self.update_progress()
+
+    def set_goal(self):
+        try:
+            self.goal_savings = float(self.goal_entry.get())
+            self.start_date = datetime.now()
+            self.end_date = self.start_date.replace(year=self.start_date.year + 1)
+            self.update_progress()
+            messagebox.showinfo("Goal Set", f"Goal savings set to Php{self.goal_savings:.2f}.")
+        except ValueError:
+            messagebox.showerror("Invalid Input", "Please enter a valid number for the goal savings.")
+
+    def update_progress(self):
+        if hasattr(self, 'goal_savings') and self.goal_savings:
+            total_savings = sum(saving[0] for saving in self.savings)
+            progress = (total_savings / self.goal_savings) * 100
+            self.progress_bar['value'] = progress
+            self.progress_label.config(text=f"Savings Progress: Php{total_savings:.2f}/Php{self.goal_savings:.2f}")
+
+    def update_net_worth(self):
+        total_expenses = sum(expense[1] for expense in self.expenses)
+        total_savings = sum(saving[0] for saving in self.savings)
+        net_worth = total_savings - total_expenses
+        self.net_worth_label.config(text=f"Net Worth: Php{net_worth:.2f}")
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = ExpenseTrackerApp(root)
+    root.mainloop()
